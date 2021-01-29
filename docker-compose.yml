@@ -1,0 +1,104 @@
+version: '3.8'
+services:
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.2
+    container_name: es01
+    environment:
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es02
+      - cluster.initial_master_nodes=es01,es02
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - dataes01:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - elastic
+  es02:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.2
+    container_name: es02
+    environment:
+      - node.name=es02
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es01
+      - cluster.initial_master_nodes=es01,es02
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - dataes02:/usr/share/elasticsearch/data
+    networks:
+      - elastic
+
+  redis-master:
+    image: "redis:alpine"
+    container_name: redis-master
+    command: redis-server --requirepass 123 --port 6379 
+    ports:
+     - "6379:6379"
+    volumes:
+     - ./redis/redis_master-data:/var/lib/redis
+     - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+
+    environment:
+     - REDIS_REPLICATION_MODE=master
+
+    networks:
+      redis_net:
+        ipv4_address: 172.28.1.4
+        
+  redis-slave:
+    image: "redis:alpine"
+    container_name: redis-slave
+    command: redis-server --slaveof redis-master 6379 --masterauth 123
+    links:
+     - redis-master:redis-master
+    ports:
+     - "6380:6379"
+
+    volumes:
+     - ./redis/redis_slave-data:/var/lib/redis
+
+    environment:
+     - REDIS_REPLICATION_MODE=slave
+
+    networks:
+      redis_net:
+        ipv4_address: 172.28.1.5
+        
+        
+  postgres:
+   container_name: postgres
+   restart: always
+   image: postgres:latest
+   volumes:
+     - ./database:/var/lib/postgresql
+   ports:
+     - "5432:5432"
+   environment:
+    - POSTGRES_PASSWORD=123
+    - POSTGRES_USER=user
+volumes:
+  dataes01:
+    driver: local
+  dataes02:
+    driver: local
+
+
+networks:
+  elastic:
+    driver: bridge
+  redis_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
